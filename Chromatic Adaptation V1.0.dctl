@@ -8,8 +8,8 @@
 //Reference Links:
 //01 adaptation algorithm: http://www.brucelindbloom.com/index.html?Math.html
 //02 CCT to CIE1931 xy coordinates algorithm: https://en.wikipedia.org/wiki/Planckian_locus#Approximation
-//03 ACES AP0-XYZ transform matrix: https://doi.org/10.5594/SMPTE.ST2065-1.2012
-//04 XYZ-ACES APO transform matrix: https://en.wikipedia.org/wiki/Academy_Color_Encoding_System#Converting_CIE_XYZ_values_to_ACES2065-1_values
+//03 ACES AP0-XYZ matrix: https://doi.org/10.5594/SMPTE.ST2065-1.2012
+//04 XYZ-ACES APO matrix: https://en.wikipedia.org/wiki/Academy_Color_Encoding_System#Converting_CIE_XYZ_values_to_ACES2065-1_values
 
 //User inputs
 //DEFINE_UI_PARAMS([variable name], [label], [ui element type], [default value], [min value], [max value], [step])
@@ -48,7 +48,7 @@ __DEVICE__ float3 cct2xyz(float inv)
         //x and y coordinates calculate (above 4000 kelvin)
     }
     
-    //transform xy coordinates to XYZ coordinates
+    // xy coordinates to XYZ coordinates
     outx = x/y;
     outy = 1.0f;
     outz = (1.0f-x-y)/y;
