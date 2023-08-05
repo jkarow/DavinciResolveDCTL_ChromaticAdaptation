@@ -12,6 +12,9 @@
 //04 XYZ-ACES APO matrix: https://en.wikipedia.org/wiki/Academy_Color_Encoding_System#Converting_CIE_XYZ_values_to_ACES2065-1_values
 
 //User inputs
+DEFINE_UI_PARAMS(method, Method, DCTLUI_COMBO_BOX, 3, { bf, ct02, ct16 }, { Bradford, CAT02, CAT16 })
+DEFINE_UI_PARAMS(w_gamut, Working gamut, DCTLUI_COMBO_BOX, 0, { bt2020, ap0 }, { BT2020, AP0 })
+
 //DEFINE_UI_PARAMS([variable name], [label], [ui element type], [default value], [min value], [max value], [step])
 DEFINE_UI_PARAMS(scct, Source CCT, DCTLUI_SLIDER_FLOAT, 6500, 2000, 10000.0, 100.0)
 DEFINE_UI_PARAMS(dcct, Destination CCT, DCTLUI_SLIDER_FLOAT, 6500, 2000, 10000.0, 100.0)
@@ -62,29 +65,68 @@ __DEVICE__ float3 transform(int p_Width, int p_Height, int p_X, int p_Y, float p
     float3 lms_dst;//destination cct LMS(rho, gamma, beta) value (see reference 01)
     float mtxm[9];//matrix M (see reference 01)
 
+    //BT2020 to XYZ matrix
+    const float mtx2020xyz[9] = {6.36958048e-01f, 1.44616904e-01f, 1.68880975e-01f, 2.62700212e-01f, 6.77998072e-01f, 5.93017165e-02f, 4.99410657e-17f, 2.80726930e-02f, 1.06098506e+00f};
+    //XYZ to BT2020 matrix
+    const float mtxxyz2020[9] = {1.71665119f, -0.35567078f, -0.25336628f, -0.66668435f, 1.61648124f, 0.01576855f, 0.01763986f, -0.04277061f, 0.94210312f};
+
     //ACES AP0 to XYZ matrix
-    const float mtxap0xyz[9] = 
-    {0.9525523959f, 0.0f, 0.0000936786f, 
-    0.3439664498f, 0.7281660966f, -0.0721325464f, 
-    0.0f, 0.0f, 1.0088251844f};
-
+    const float mtxap0xyz[9] = {0.9525523959f, 0.0f, 0.0000936786f, 0.3439664498f, 0.7281660966f, -0.0721325464f, 0.0f, 0.0f, 1.0088251844f};
     //XYZ to ACES AP0 matrix
-    const float mtxxyzap0[9]=
-    {1.0498110175f, 0.0f, -0.0000974845f,
-     -0.4959030231f, 1.3733130458f, 0.0982400361f,
-     0.0f, 0.0f, 0.9912520182f};
+    const float mtxxyzap0[9] = {1.0498110175f, 0.0f, -0.0000974845f, -0.4959030231f, 1.3733130458f, 0.0982400361f, 0.0f, 0.0f, 0.9912520182f};
 
+    float mtx_rgb_xyz[9];
+    float mtx_xyz_rgb[9];
+    
+    for (int i = 0; i < 9; ++i) {
+        switch (w_gamut) {
+        case bt2020:
+            mtx_rgb_xyz[i] = mtx2020xyz[i]; break;
+        case ap0:
+            mtx_rgb_xyz[i] = mtxap0xyz[i]; break;
+        }
+        switch (w_gamut) {
+        case bt2020:
+            mtx_xyz_rgb[i] = mtxxyz2020[i]; break;
+        case ap0:
+            mtx_xyz_rgb[i] = mtxxyzap0[i]; break;
+        }
+    }
+
+    // Bradford linear
     //matrix MA (see reference 01)
-    const float mtxma[9]=
-    {0.8951f, 0.2664f, -0.1614f,
-     -0.7502f, 1.7135f, 0.0367f, 
-     0.0389f, -0.0685f, 1.0296f};
+    const float mtx_Bradford[9]= {0.8951f, 0.2664f, -0.1614f, -0.7502f, 1.7135f, 0.0367f,  0.0389f, -0.0685f, 1.0296f};
+    const float mtx_Bradford_inv[9]= {0.9869929f, -0.1470543f, 0.1599627f,  0.4323053f, 0.5183603f, 0.0492912f, -0.0085287f, 0.0400428f, 0.9684867f};
 
-    //inverse of matrix MA (see reference 01)
-    const float mtxma_inv[9]=
-    {0.9869929f, -0.1470543f, 0.1599627f,
-     0.4323053f, 0.5183603f, 0.0492912f,
-    -0.0085287f, 0.0400428f, 0.9684867f};
+    // CAT02
+    const float mtx_CAT_CAT02[9] = {0.732800f,  0.429600f, -0.162400f, -0.703600f,  1.697500f,  0.006100f,  0.003000f,  0.013600f,  0.983400f};
+    const float mtx_CAT_CAT02_inv[9] = {1.096124f, -0.278869f,  0.182745f,  0.454369f,  0.473533f,  0.072098f, -0.009628f, -0.005698f,  1.015326f};
+
+    // CAT16
+    const float mtx_CAT_CAT16[9] = {0.401288f, 0.650173f, -0.051461f, -0.250268f, 1.204414f, 0.045854f, -0.002079f, 0.048952f, 0.953127f};
+    const float mtx_CAT_CAT16_inv[9] = {1.862068f, -1.011255f,  0.149187f,  0.387527f,  0.621447f, -0.008974f, -0.015841f, -0.034123f,  1.049964f};
+
+    float mtxma[9];
+    float mtxma_inv[9];
+
+    for (int i = 0; i < 9; ++i) {
+        switch (method) {
+        case bf:
+            mtxma[i] = mtx_Bradford[i]; break;
+        case ct02:
+            mtxma[i] = mtx_CAT_CAT02[i]; break;
+        case ct16:
+            mtxma[i] = mtx_CAT_CAT16[i]; break;
+        }
+        switch (method) {
+        case bf:
+            mtxma_inv[i] = mtx_Bradford_inv[i]; break;
+        case ct02:
+            mtxma_inv[i] = mtx_CAT_CAT02_inv[i]; break;
+        case ct16:
+            mtxma_inv[i] = mtx_CAT_CAT16_inv[i]; break;
+        }
+    }
 
     float3 scctxyz = cct2xyz(scct);//calculate XYZ coordinate of source CCT
     float3 dcctxyz = cct2xyz(dcct);//calculate XYZ coordinate of destination CCT
@@ -116,19 +158,19 @@ __DEVICE__ float3 transform(int p_Width, int p_Height, int p_X, int p_Y, float p
     float src_B = p_B;
 
     //convert image source RGB value into XYZ
-    float src_X = mtxap0xyz[0] * src_R + mtxap0xyz[1] * src_G + mtxap0xyz[2] * src_B;
-    float src_Y = mtxap0xyz[3] * src_R + mtxap0xyz[4] * src_G + mtxap0xyz[5] * src_B;
-    float src_Z = mtxap0xyz[6] * src_R + mtxap0xyz[7] * src_G + mtxap0xyz[8] * src_B;
+    float src_X = mtx_rgb_xyz[0] * src_R + mtx_rgb_xyz[1] * src_G + mtx_rgb_xyz[2] * src_B;
+    float src_Y = mtx_rgb_xyz[3] * src_R + mtx_rgb_xyz[4] * src_G + mtx_rgb_xyz[5] * src_B;
+    float src_Z = mtx_rgb_xyz[6] * src_R + mtx_rgb_xyz[7] * src_G + mtx_rgb_xyz[8] * src_B;
     
     //apply matrix M to XYZ value (chromatic adaptation)
     float dst_X = mtxm[0] * src_X + mtxm[1] * src_Y + mtxm[2] * src_Z;
     float dst_Y = mtxm[3] * src_X + mtxm[4] * src_Y + mtxm[5] * src_Z;
     float dst_Z = mtxm[6] * src_X + mtxm[7] * src_Y + mtxm[8] * src_Z;
 
-    //convert XYZ after adaptation back to ACES AP0 RGB
-    float dst_R = mtxxyzap0[0] * dst_X + mtxxyzap0[1] * dst_Y + mtxxyzap0[2] * dst_Z;
-    float dst_G = mtxxyzap0[3] * dst_X + mtxxyzap0[4] * dst_Y + mtxxyzap0[5] * dst_Z;
-    float dst_B = mtxxyzap0[6] * dst_X + mtxxyzap0[7] * dst_Y + mtxxyzap0[8] * dst_Z;
+    //convert XYZ after adaptation back to RGB
+    float dst_R = mtx_xyz_rgb[0] * dst_X + mtx_xyz_rgb[1] * dst_Y + mtx_xyz_rgb[2] * dst_Z;
+    float dst_G = mtx_xyz_rgb[3] * dst_X + mtx_xyz_rgb[4] * dst_Y + mtx_xyz_rgb[5] * dst_Z;
+    float dst_B = mtx_xyz_rgb[6] * dst_X + mtx_xyz_rgb[7] * dst_Y + mtx_xyz_rgb[8] * dst_Z;
 
     return make_float3(dst_R, dst_G, dst_B);
 }
